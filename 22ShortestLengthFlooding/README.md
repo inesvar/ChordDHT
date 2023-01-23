@@ -30,13 +30,19 @@ When an actor receives a message, it increments the "lentgh" by 1 and transmits 
 Be careful to modify the controlled flooding algorithm so that even if an actor already received a message with the same sequence number, this times it does transmit it to its neigbors if the length is inferior to the one received before. This means that for each sequence number, all actors have to store the corresponding length.
 
 Run the algorithm by starting with actor A and answer those questions: 
-- how many messages are received by P ? 
+- how many messages are received by P ? P = 16
+P receives one message per flood.
 - What is the lowest value "length" received by P ?
+The lowest length is 3.
 
 Now run the algorithm by starting with actor L and answer those questions:
 - how many messages are received by P ?
+P receives one message per flood.
 - What is the lowest value "length" received by P ?
+The lowest length is 4.
 
 Now run the algorithm by starting with actor I and answer those questions:
-- how many messages are received by Q ?
+- how many messages are received by Q ? Q = 17
+Q receives one message per flood.
 - What is the lowest value "length" received by Q ?
+The lowest length is 5.

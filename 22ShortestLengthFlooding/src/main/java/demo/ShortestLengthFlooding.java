@@ -49,7 +49,14 @@ public class ShortestLengthFlooding {
 			actors.get(i).tell(new MyMessage(refs), ActorRef.noSender());
 		}
 
+		// starting with Actor A
 		actors.get(0).tell(new MyMessage("start"), ActorRef.noSender());
+
+		// starting with Actor L
+		//actors.get(11).tell(new MyMessage("start"), ActorRef.noSender());
+
+		// starting with Actor I
+		//actors.get(8).tell(new MyMessage("start"), ActorRef.noSender());
 
 	    // We wait 5 seconds before ending system (by default)
 	    // But this is not the best solution.
@@ -63,7 +70,7 @@ public class ShortestLengthFlooding {
 	}
 
 	public static void waitBeforeTerminate() throws InterruptedException {
-		Thread.sleep(5000);
+		Thread.sleep(15000);
 	}
 
 }
