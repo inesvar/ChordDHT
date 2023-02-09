@@ -11,12 +11,10 @@ public class ActorA extends UntypedAbstractActor{
 
 	// Logger attached to actor
 	private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
-	// Actor reference
-	private ArrayList<ActorRef> actorRef;
+	// Actor references
+	private ActorRef transmitter, actorB;
 
-	public ActorA() {
-		actorRef = new ArrayList<>();
-	}
+	public ActorA() {}
 
 	// Static function creating actor
 	public static Props createActor() {
@@ -25,37 +23,22 @@ public class ActorA extends UntypedAbstractActor{
 		});
 	}
 
-
 	@Override
 	public void onReceive(Object message) throws Throwable {
 		if (message instanceof MyMessage) {
 			MyMessage m = (MyMessage) message;
 			if (m.nbOfStrings == 0) {
-				actorRef = m.refs;
-				log.info("["+getSelf().path().name()+"] received message from ["+ getSender().path().name() +"]");
+				transmitter = m.refs.get(0);
+				actorB = m.refs.get(1);
+				log.info("["+getSelf().path().name()+"] received references from ["+ getSender().path().name() +"]");
 				log.info(m.nbOfRefs + " actor references added !");
 			}
 			else if (m.string.equals("start")) {
-				actorRef.get(0).tell(new MyMessage("hello", actorRef.get(1)), getSelf());
+				log.info("["+getSelf().path().name()+"] received message \"start\" from ["+ getSender().path().name() +"]");
+				transmitter.tell(new MyMessage("hello", actorB), getSelf());
 			} else if (m.string.equals("hi!")) {
-				log.info("["+getSelf().path().name()+"] received message from ["+ getSender().path().name() +"]");
+				log.info("["+getSelf().path().name()+"] received message \"hi!\" from ["+ getSender().path().name() +"]");
 			}
 		}
 	}
-
-
-	/**
-	 * alternative for AbstractActor
-	 * @Override
-	public Receive createReceive() {
-		return receiveBuilder()
-				// When receiving a new message containing a reference to an actor,
-				// Actor updates his reference (attribute).
-				.match(ActorRef.class, ref -> {
-					this.actorRef = ref;
-					log.info("Actor reference updated ! New reference is: {}", this.actorRef);
-				})
-				.build();
-	}
-	 */
 }

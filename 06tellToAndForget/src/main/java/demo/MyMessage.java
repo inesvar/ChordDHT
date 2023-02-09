@@ -10,14 +10,6 @@ public class MyMessage implements Serializable {
     public final int nbOfStrings;
     public final String string;
     public final ArrayList<ActorRef> refs;
-    
-
-    /*public MyMessage(String string, ArrayList<ActorRef> refs) {
-        nbOfStrings = 1;
-        nbOfRefs = refs.size();
-        this.string = string;
-        this.refs = org.apache.commons.lang3.SerializationUtils.clone(refs);
-    }*/
 
     public MyMessage(ArrayList<ActorRef> refs) {
         nbOfStrings = 0;
@@ -33,9 +25,8 @@ public class MyMessage implements Serializable {
         nbOfStrings = 1;
         nbOfRefs = 1;
         this.string = string;
-        ArrayList<ActorRef> refs = new ArrayList<ActorRef>();
-        refs.add(ref);
-        this.refs = refs;
+        this.refs = new ArrayList<ActorRef>();
+        this.refs.add(ref);
     }
 
     public MyMessage(String string) {

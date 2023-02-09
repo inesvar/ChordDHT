@@ -4,17 +4,13 @@ import java.util.ArrayList;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
-/**
- * @author Remi SHARROCK
- * @description
- */
 public class TellToAndForget {
 
 	public static void main(String[] args) {
 
 		final ActorSystem system = ActorSystem.create("system");
 		
-		// Instantiate first and second actor
+		// Instantiate actors
 	    final ActorRef a = system.actorOf(ActorA.createActor(), "a");
         final ActorRef t = system.actorOf(Transmitter.createActor(), "transmitter");
         final ActorRef b = system.actorOf(ActorB.createActor(), "b");
