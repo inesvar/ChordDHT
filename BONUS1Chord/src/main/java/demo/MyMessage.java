@@ -6,51 +6,47 @@ import akka.actor.ActorRef;
 
 public class MyMessage implements Serializable {
     private static final long serialVersionUID = 1L;
+
+    public final Chord.messages messageType;
     public final int ID;
-    public final int number;
-    public final String string;
-    public final String string2;
+    public final int fingerNumber;
     public final String value;
     public final ArrayList<ActorRef> fingerTable;
     public final ActorRef actorRef;
 
-    // fix_fingers
-    public MyMessage(String string) {
-        this.string = string;
-        this.string2 = null;
+    // fix_fingers, debugging messages
+    public MyMessage(Chord.messages messageType) {
+        this.messageType = messageType;
         this.ID = 0;
         this.value = null;
         this.fingerTable = null;
         this.actorRef = null;
-        this.number=0;
+        this.fingerNumber=0;
     }
 
     // dump
-    public MyMessage(String string, int ID) {
-        this.string = string;
-        this.string2 = null;
+    public MyMessage(Chord.messages messageType, int ID) {
+        this.messageType = messageType;
         this.ID = ID;
         this.value = null;
         this.fingerTable = null;
         this.actorRef = null;
-        this.number=0;
+        this.fingerNumber=0;
     }
 
     // found, lookup
-    public MyMessage(String string, int number, int ID) {
-        this.string = string;
-        this.string2 = null;
+    public MyMessage(Chord.messages messageType, int fingerNumber, int ID) {
+        this.messageType = messageType;
         this.ID = ID;
         this.value = null;
         this.fingerTable = null;
         this.actorRef = null;
-        this.number=number;
+        this.fingerNumber=fingerNumber;
     }
 
     // welcome
-    public MyMessage(String string, ArrayList<ActorRef> fingerTable) {
-        this.string = string;
-        this.string2 = null;
+    public MyMessage(Chord.messages messageType, ArrayList<ActorRef> fingerTable) {
+        this.messageType = messageType;
         this.ID = 0;
         this.value = null;
         this.fingerTable = new ArrayList<>();
@@ -58,50 +54,36 @@ public class MyMessage implements Serializable {
             this.fingerTable.add(fingerTable.get(i));
         };
         this.actorRef = null;
-        this.number=0;
+        this.fingerNumber=0;
     }
 
     // signal
-    public MyMessage(String string, String string2, ActorRef actorRef) {
-        this.string = string;
-        this.string2 = string2;
+    public MyMessage(Chord.messages messageType, ActorRef actorRef) {
+        this.messageType = messageType;
         this.ID = 0;
         this.value = null;
         this.fingerTable = null;
         this.actorRef = actorRef;
-        this.number=0;
-    }
-
-    // signal
-    public MyMessage(String string, ActorRef actorRef) {
-        this.string = string;
-        this.string2 = null;
-        this.ID = 0;
-        this.value = null;
-        this.fingerTable = null;
-        this.actorRef = actorRef;
-        this.number=0;
+        this.fingerNumber=0;
     }
 
     // add, remove
-    public MyMessage(String string, int ID, ActorRef actorRef) {
-        this.string = string;
-        this.string2 = null;
+    public MyMessage(Chord.messages messageType, int ID, ActorRef actorRef) {
+        this.messageType = messageType;
         this.ID = ID;
         this.value = null;
         this.fingerTable = null;
         this.actorRef = actorRef;
-        this.number=0;
+        this.fingerNumber=0;
     }
 
     // store
-    public MyMessage(String string, int ID, String value) {
-        this.string = string;
-        this.string2 = null;
+    public MyMessage(Chord.messages messageType, int ID, String value) {
+        this.messageType = messageType;
         this.ID = ID;
         this.value = value;
         this.fingerTable = null;
         this.actorRef = null;
-        this.number=0;
+        this.fingerNumber=0;
     }
 }

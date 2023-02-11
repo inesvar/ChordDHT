@@ -35,10 +35,9 @@ Transmitted until it reaches oldID, then :
 - the current succesor and predecessor are informed (message *signal*)
 - all oldID's values are transferred (messages *store*)
 
-### signaling a neighbours' change : `signal(code, ActorRef)`
+### signaling a disconnection : `signal(code, ActorRef)`
 
 Sent to the predecessor/successor when :
-- one signals its new predecessor to its old predecessor (code `fromPreviousSuccessor`)
 - one dies and informs its predecessor (code `fromDyingSuccessor`) and successor (code `fromDyingPredecessor`)
 
 ## Fixing-the-Ring messages
@@ -77,15 +76,21 @@ successor(ID) sends the value back to the sender using getSender()
 
 ## Debugging messages
 
-Theses messages are transmitted to every node.
+### toggle printing : `allowPrint(number)`
 
-### toggle printing : `print(boolean)`
+### printing the values : `printValues`
 
-### erasing a value : `dump(ID)`
+### printing the correct finger tables : `printFingerTable`
 
-### fetching data : `get(ID)`
+### printing only the new incorrect finger tables : `badFingerTable`
 
-successor(ID) sends the value back to the sender using getSender()
+### printing the isolated nodes : `whoDidntJoin`
+
+### killing a node : `kill`
+
+
+
+
 
 
 
