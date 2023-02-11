@@ -1,69 +1,95 @@
 
 # Chord algorithm
 
-## Using consistent hashing
 
-Nodes and keys are represented by IDs on numberBits-bit. 
+
+
+## Using **Consistent Hashing**
+
+The hashing algorithm used is **SHA-1** truncated to numberBits.
 
 Nodes' IDs are hashed ActorRefs. 
 Keys' IDs are the hashed keys.
 
-The hashing algorithm used is SHA-1 truncated to numberBits.
+We consider that the value succeeding to 2\**numberBits - 1 is 0, so that **the IDs form a ring**.
+The maths for comparision, addition and subtraction are implemented in the `Actor` subclass `CircleInt`.
 
-We consider that the value succeeding to 2**numberBits - 1 is 0, so that the IDs form a ring.
-The maths for comparision and subtraction are implemented in the subclass from Actor named CircleInt.
-
-(key, value) is placed in the node that has the smaller ID that is yet superior or equal to key.
-
-=> This minimizes the quantity of keys to move when a node is added / removed / fails.
-
-Remark : each node can compute the IDs from an actorRef or a key.
-I pre-compute the IDs in main but it isn't necessary.
+**Remark : although each node can compute the IDs from an actorRef or a key, IDs are pre-computed in main** so the messages transiting in the network don't have to be changed.
 
 
-## Types of messages : functionnal messages
+## Updating-the-Ring messages
 
-The first four messages are sent from main to a random node (or the first node).
-The fifth message is sent from a specific node to all its previous neighbours.
+These messages ensure that a **ring is formed in case no nodes fail**.
 
-### adding a new key : store(ID, value)
+### adding a new node : `add(newActorRef, newID)`
 
-The nodes transmit the message until it reaches successor(key), then (key, value) is stored there.
+Transmitted until it reaches successor(newID), then :
+- the new node gets an approximative fingerTable (message *welcome*)
+- some values are transferred (messages *store*)
+- successor(ID) updates its fingerTable
+- the previous predecessor of successor(ID) is informed (message *signal*)
 
-### removing a key : dump(ID)
+### adding a new node : `remove(oldActorRef, oldID)`
 
-The nodes transmit the message until it reaches successor(key), then (key, value) is removed from the node.
+Transmitted until it reaches oldID, then :
+- the current succesor and predecessor are informed (message *signal*)
+- all oldID's values are transferred (messages *store*)
 
-## fetching data : get(ID)
+### signaling a neighbours' change : `signal(code, ActorRef)`
 
+Sent to the predecessor/successor when :
+- one signals its new predecessor to its old predecessor (code `fromPreviousSuccessor`)
+- one dies and informs its predecessor (code `fromDyingSuccessor`) and successor (code `fromDyingPredecessor`)
 
-### adding a new node : add(newActorRef, ID)
+## Fixing-the-Ring messages
 
-The nodes transmit the message until it reaches successor(key), then the (key', value') where key' < key are moved to the new node.
-The neighbours' list of the successor node is modified accordingly and its new neighbours' list is sent to all the ancient neighbours and to the new node.
+These messages ensure that the **ring stays even if case of fails** and that **the finger tables are updated**.
 
-### removing a node : remove(oldActorRef, ID)
+They're sent periodically thanks to a scheduler.
 
-The nodes transmit the message until it reaches successor(key), then the (key', value') of the node being removed are stored in the successor node.
-The neighbours' list of the succesor node is modified accordingly and its new neighbours' list is sent to all the ancient neighbours and to the new node.
+### notifying its successor : `notify(code)`
 
-### signaling a neighbours' change : signal(neighbours' list) (replaces Stabilize)
+Sent to the predecessor (code 0) and successor (code 1).
 
-A node send its new neighbours' list (successor and predecessor) to its predecessor(s) and succesor(s) (both the current and previous ones).
-=> make sure the predecessor and successor fields are exact, but the finger table isn't corrected
-=> we solve this problem using stabilization
-
-
-## Types of messages : stabilizing messages (nessecary in case of node fail)
-These messages should transit in the whole ring to fix failures.
-
-### Notify and check predecessor repair the ring if broken
-n asks its successor for its predecessor p and decides whether p should be n's successor instead (this is the case if p recently joined the system).
-node compares the value of itself to predecessor(successor(node)) and eventually updates its own successor.
+The successor check periodically that it has received a `notify`, otherwise marks the predecessor as dead.
     
-### Fix_fingers : look_up(ID) (transits to ID's successor) => found(ID's successor) (goes back to n)
-updates finger tables :
-each node n looks for the successor(node + 2**(i-1))
+### fixing the finger tables 1 : `look_up(ID, fingerNumber)`
+
+Transmitted until it reaches successor(ID), then successor(ID) sends back a `found` message with its ID to the sender.
+
+### fixing the finger tables 2 : `found(fingerID, fingerNumber)`
+
+### stabilize_req()
+
+Sent to the successor (no need to notify its successor) to check that it's the closest successor. The successor has to answer by `stabilize_done` (no need to notify its predecessor).
+
+## Data messages
+
+Theses messages are transmitted until they reach successor(ID).
+
+### adding a new value : `store(ID, value)`
+
+### erasing a value : `dump(ID)`
+
+### fetching data : `get(ID)`
+
+successor(ID) sends the value back to the sender using getSender()
+
+## Debugging messages
+
+Theses messages are transmitted to every node.
+
+### toggle printing : `print(boolean)`
+
+### erasing a value : `dump(ID)`
+
+### fetching data : `get(ID)`
+
+successor(ID) sends the value back to the sender using getSender()
+
+
+
+
 
 
 

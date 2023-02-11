@@ -72,6 +72,17 @@ public class MyMessage implements Serializable {
         this.number=0;
     }
 
+    // signal
+    public MyMessage(String string, ActorRef actorRef) {
+        this.string = string;
+        this.string2 = null;
+        this.ID = 0;
+        this.value = null;
+        this.fingerTable = null;
+        this.actorRef = actorRef;
+        this.number=0;
+    }
+
     // add, remove
     public MyMessage(String string, int ID, ActorRef actorRef) {
         this.string = string;
