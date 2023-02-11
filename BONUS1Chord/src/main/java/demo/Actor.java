@@ -376,52 +376,56 @@ public class Actor extends UntypedAbstractActor {
 					//log.info("["+ID.toInt()+"] received a message "+m.string);
 
 					CircleInt sender = new CircleInt(hashActorRef(getSender()));
-					if (m.number == 1) {
-						// message from predecessor
-						if (fingerTable.get(numberBits) == getSender()) {
-							predecessorAlive = 2;
-						} else if (fingerTable.get(numberBits) == null) {
-							fingerTable.set(numberBits, getSender());
-							predecessorAlive = 2;
-						} else if (sender.isBetween(getFingerTableID(numberBits), ID)) {
-							// make sure the old predecessor is updated
-							fingerTable.get(numberBits).tell(new MyMessage("signal", "fromPreviousSuccessor", getSender()), getSelf());
-							fingerTable.set(numberBits, getSender()); 
-							predecessorAlive = 2;
-						} else {
-							if (allowedToPrint)
-								System.out.println("not supposed to happen 123");
-							
-						}
-						printFingerTable("was notifyied by "+sender.toInt()+" predecessor is "+predecessorAlive, true);
-					} else if (m.number == 0) {
-						// message from successor
-						if (fingerTable.get(0) == getSender()) {
-							successorAlive = 2;
-						} else if (fingerTable.get(0) == null) {
-							fingerTable.set(0, getSender());
-							successorAlive = 2;
-						} else if (sender.isBetween(ID, getFingerTableID(0))) {
-							// make sure the old successor is updated
-							fingerTable.get(0).tell(new MyMessage("signal", "fromPreviousSuccessor", getSender()), getSelf());
-							fingerTable.set(0, getSender()); 
-							successorAlive = 2;
-						} else {
-							if (allowedToPrint)
-								System.out.println("not supposed to happen 123");
-							
-						}
-						printFingerTable("was notifyied by "+sender.toInt()+" successor is "+predecessorAlive, true);
+					getSender().tell(new MyMessage("stabilize", fingerTable.get(numberBits)), ActorRef.noSender());
+					
+					// message from predecessor
+					if (fingerTable.get(numberBits) == getSender()) {
+						predecessorAlive = 2;
+					
+					} else if (fingerTable.get(numberBits) == null) {
+						fingerTable.set(numberBits, getSender());
+						predecessorAlive = 2;
+					
+					} else if (sender.isBetween(getFingerTableID(numberBits), ID)) {
+						// make sure the old predecessor is updated
+						System.out.println("so it happens");
+						fingerTable.get(numberBits).tell(new MyMessage("signal", "fromPreviousSuccessor", getSender()), getSelf());
+						fingerTable.set(numberBits, getSender()); 
+						predecessorAlive = 2;
+					} else {
+						if (allowedToPrint)
+							System.out.println("not supposed to happen ["+ID.toInt()+"] notifyied by "+sender.toInt());
+					
 					}
+					printFingerTable("was notifyied by "+sender.toInt()+" predecessor is "+predecessorAlive, false);
 				}
+					
+			} else if (m.string == "stabilize") {
 
+				synchronized(this) {
+					// message from successor
+					successorAlive = 2;
+					if (getSelf() == m.actorRef) {
+						return;
+					}
+					CircleInt successor = new CircleInt(hashActorRef(m.actorRef));
+					if (successor.isBetween(ID, getFingerTableID(0))) {
+						fingerTable.set(0, m.actorRef); 
+					} else {
+						//if (allowedToPrint)
+							System.out.println("not supposed to happen ["+ID.toInt()+"] stabilized by "+successor.toInt());
+						
+					}
+					printFingerTable("was notifyied , successor is "+getFingerTableID(0), false);
+				}
+				
 			} else if (m.string.equals("notifyNeighbours")) {
 
 				synchronized(this) {
-					fingerTable.get(0).tell(new MyMessage("notify", 1, ID.toInt()), getSelf());
-					if (fingerTable.get(numberBits) != null) {
+					fingerTable.get(0).tell(new MyMessage("notify"), getSelf());
+					/*if (fingerTable.get(numberBits) != null) {
 						fingerTable.get(numberBits).tell(new MyMessage("notify", 0, ID.toInt()), getSelf());
-					}
+					}*/
 				}
 			
 			} else if (m.string.equals("checkAlive")) {
@@ -449,7 +453,7 @@ public class Actor extends UntypedAbstractActor {
 							fingerTable.set(j, fingerTable.get(i));
 						}
 					}
-					printFingerTable("checkAlive", true);
+					printFingerTable("checkAlive successor"+successorAlive+"predecessor"+predecessorAlive, false);
 				}
 
 			} else if (m.string.equals("lookup")) {

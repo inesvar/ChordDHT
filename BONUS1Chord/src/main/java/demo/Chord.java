@@ -71,11 +71,11 @@ public class Chord {
 				actor.tell(new MyMessage("whoDidntJoin"), ActorRef.noSender());
 			}
 			wait(1000);*/
-			/*System.out.println("\nBAD FINGER TABLES "+i+"\n");
+			System.out.println("\nBAD FINGER TABLES "+i+"\n");
 			for (ActorRef actor : actors) {
 				actor.tell(new MyMessage("badFingerTable"), ActorRef.noSender());
-			}*/
-			//wait(1000);
+			}
+			wait(1000);
 			/*System.out.println("\nFINGER TABLES "+i+"\n");
 			for (ActorRef actor : actors) {
 				actor.tell(new MyMessage("printFingerTable"), ActorRef.noSender());
@@ -122,7 +122,7 @@ public class Chord {
 		}
 
 		// print all the finger tables
-		for (ActorRef actor : actors) {
+		*/for (ActorRef actor : actors) {
 			actor.tell(new MyMessage("printFingerTable"), ActorRef.noSender());
 		}
 
@@ -142,7 +142,15 @@ public class Chord {
 		// print all the finger tables
 		for (ActorRef actor : actors) {
 			actor.tell(new MyMessage("printFingerTable"), ActorRef.noSender());
-		}*/
+		}
+
+		wait(5000);
+
+		//actors.remove(0);
+		// print all the finger tables
+		for (ActorRef actor : actors) {
+			actor.tell(new MyMessage("printFingerTable"), ActorRef.noSender());
+		}
 		
 		// actors.get(0).kill();
 
