@@ -1,6 +1,14 @@
 
 # Chord algorithm
 
+## Testing it
+
+Just compile and execute with 
+- mvn compile
+- mvn exec::exec
+
+It's a small demo of what the code can do with some data manipulation, a node failure and a node disconnection.
+
 
 ## Using **Consistent Hashing**
 
