@@ -39,7 +39,6 @@ public class Actor extends UntypedAbstractActor {
 	private boolean isDead = false;
 	// number of lost messages
 	private int numberMessagesLost = 0;
-	private boolean allowedToPrint = Chord.allowedToPrintEverything;
 
 	public Actor(int ID) {
 
@@ -50,7 +49,7 @@ public class Actor extends UntypedAbstractActor {
 			fingerTable[i] = getSelf();
 		}
 		
-		if (Chord.debugFixFingers | Chord.debugRingRepair | Chord.debugData | allowedToPrint) {
+		if (Chord.debugFixFingers | Chord.debugRingRepair | Chord.debugData | Chord.seeAllMessages) {
 			System.out.println("Node "+this.ID.toInt()+" created");
 		}
 	}
@@ -60,10 +59,6 @@ public class Actor extends UntypedAbstractActor {
 		return Props.create(Actor.class, () -> {
 			return new Actor(ID);
 		});
-	}
-
-	public void allowPrint(boolean b) {
-		allowedToPrint = b;
 	}
 
 	public int getFingerTableID(int index){
@@ -94,11 +89,11 @@ public class Actor extends UntypedAbstractActor {
 	}
 
 	public void printFingerTable(String s, boolean forcePrint) {
-		int[] fingerTableIDs = new int[numberBits + 1];
-		for (int i = 0; i < numberBits + 1; i++) {
-			fingerTableIDs[i] = getFingerTableID(i);
-		}
-		if (allowedToPrint | forcePrint  | Chord.debugRingRepair) {
+		if (forcePrint | Chord.seeAllMessages) {
+			int[] fingerTableIDs = new int[numberBits + 1];
+			for (int i = 0; i < numberBits + 1; i++) {
+				fingerTableIDs[i] = getFingerTableID(i);
+			}
 			System.out.println("Node "+ID.toInt()+" finger table : "+Arrays.toString(fingerTableIDs)+" "+s);
 		}
 	}
@@ -187,7 +182,7 @@ public class Actor extends UntypedAbstractActor {
 			IndirectMessage m = (IndirectMessage) message;
 			if (isDead) {
 				numberMessagesLost++;
-				if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers)
+				if (Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers | Chord.seeAllMessages)
 					System.out.println("["+ID.toInt()+"] is dead, a message "+m.messageType+" was lost !! "+numberMessagesLost+" lost already");
 				return;
 			}
@@ -202,7 +197,7 @@ public class Actor extends UntypedAbstractActor {
 						// store the key and value
 						values.put(m.ID, m.value);
 						keys.add(m.ID);
-						if (Chord.debugData)
+						if (Chord.debugData | Chord.seeAllMessages)
 							System.out.println("["+ID.toInt()+"] stored a new value "+m.value+" for key "+m.ID);
 						break;
 				//============================
@@ -212,7 +207,7 @@ public class Actor extends UntypedAbstractActor {
 						// dump the key and value
 						values.remove(m.ID);
 						keys.removeIf(n -> (n == m.ID));
-						if (Chord.debugData)
+						if (Chord.debugData| Chord.seeAllMessages)
 							System.out.println("["+ID.toInt()+"] erased value for key "+m.ID);
 						break;
 				//============================
@@ -233,10 +228,7 @@ public class Actor extends UntypedAbstractActor {
 						// tell the old predecessor that it has a new successor
 						if (predecessorAlive > 0)
 							oldPredecessor.tell(new DirectMessage(Chord.directMessages.STABILIZE, fingerTable[numberBits]), ActorRef.noSender());
-						if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers) {
-							System.out.println("["+ID.toInt()+"] added a new node "+destID.toInt());
-						}
-						printFingerTable("add", false);
+						printFingerTable("["+ID.toInt()+"] added a new node "+destID.toInt(), Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers);
 						break;
 			//============================
 			//     REMOVING A NODE
@@ -254,7 +246,7 @@ public class Actor extends UntypedAbstractActor {
 						transmitAllValues();
 						// stop responding
 						kill();
-						printFingerTable("remove", false);
+						printFingerTable("["+ID.toInt()+"] was removed", Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers);
 						break;
 				//============================
 				// LOOKING FOR A FINGER NODE
@@ -265,8 +257,7 @@ public class Actor extends UntypedAbstractActor {
 				}
 			} else {
 				// send the message to the right node
-				int index = appropriateFinger(destID);
-				fingerTable[index].tell(m, getSender());
+				fingerTable[appropriateFinger(destID)].tell(m, getSender());
 			} 
 		} else if (message instanceof DirectMessage) {
 		//============================
@@ -276,7 +267,7 @@ public class Actor extends UntypedAbstractActor {
 			if (isDead) {
 				if (!(message instanceof SchedulerMessage)) {
 					numberMessagesLost++;
-					if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers)
+					if (Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers| Chord.seeAllMessages)
 						System.out.println("["+ID.toInt()+"] is dead, a message "+m.messageType+" was lost !! "+numberMessagesLost+" lost already");			
 				}
 				return;
@@ -286,7 +277,7 @@ public class Actor extends UntypedAbstractActor {
 				//      GETTING A VALUE
 				//============================
 				case GOT :
-					if (Chord.debugData)
+					if (Chord.debugData| Chord.seeAllMessages)
 						System.out.println("["+ID.toInt()+"] got value "+m.value+" for key "+m.ID);
 					break;
 				//============================
@@ -300,7 +291,7 @@ public class Actor extends UntypedAbstractActor {
 					for (int j = numberBits; j > firstIndex; j--) {
 						fingerTable[j] = m.actorRef;
 					}
-					printFingerTable("predecessor died", false);
+					printFingerTable("["+ID.toInt()+"]'s predecessor disconnected", Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers);
 					break;
 
 				case SUCCESSORDIE :
@@ -311,7 +302,7 @@ public class Actor extends UntypedAbstractActor {
 					for (int j = 0; j < lastIndex; j++) {
 						fingerTable[j] = m.actorRef;
 					}
-					printFingerTable("successor died", false);
+					printFingerTable("["+ID.toInt()+"]'s successor disconnected", Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers);
 					break;
 
 				//============================
@@ -323,7 +314,7 @@ public class Actor extends UntypedAbstractActor {
 						fingerTable[i] = getSender();
 					}
 					fingerTable[numberBits] = m.actorRef;
-					printFingerTable("welcome", false);
+					printFingerTable("welcome", Chord.debugRingRepair | Chord.debugFixFingers);
 					break;
 
 				//============================
@@ -335,7 +326,7 @@ public class Actor extends UntypedAbstractActor {
 							for (int i = numberBits-1; i > -1; i--) {
 								if (!fingerChecked[i]) {
 									fingerTable[i] = fingerTable[0];
-									if (Chord.debugFixFingers)
+									if (Chord.debugFixFingers| Chord.seeAllMessages)
 										System.out.println("["+ID.toInt()+"] lost finger "+i+" probably due to some node fail");
 							
 								}
@@ -343,8 +334,7 @@ public class Actor extends UntypedAbstractActor {
 							isFixingFingers = false;
 							recentlyFixedFingers = true;
 							problematicFingerTable = false;
-							if (Chord.debugFixFingers)
-								System.out.println("["+ID.toInt()+"] is done fixing fingers");
+							printFingerTable(" fixed finger table", Chord.debugFixFingers);
 							return;
 						}
 						isFixingFingers = true;
@@ -356,7 +346,7 @@ public class Actor extends UntypedAbstractActor {
 							int fingerID = ID.toInt() + (1<<i);
 							fingerTable[0].tell(new IndirectMessage(Chord.indirectMessages.LOOKUP, fingerID, i), getSelf());
 						}
-						if (Chord.debugFixFingers)
+						if (Chord.debugFixFingers| Chord.seeAllMessages)
 							System.out.println("["+ID.toInt()+"] has started fixing fingers");
 					} else if (recentlyFixedFingers) {
 						recentlyFixedFingers = false;
@@ -371,14 +361,13 @@ public class Actor extends UntypedAbstractActor {
 						fingerTable[m.fingerNumber] = getSender();
 						numberFingersChecked++;
 						fingerChecked[m.fingerNumber] = true;
-						if (allowedToPrint | Chord.debugFixFingers)
+						if (Chord.debugFixFingers| Chord.seeAllMessages)
 							System.out.println("["+ID.toInt()+"] finger "+m.fingerNumber+" is "+m.ID+" ("+numberFingersChecked+")");
 						if (numberFingersChecked == numberBits) {
 							isFixingFingers = false;
 							recentlyFixedFingers = true;
 							problematicFingerTable = false;
-							if (Chord.debugFixFingers)
-								System.out.println("["+ID.toInt()+"] is done fixing fingers");
+							printFingerTable(" fixed finger table", Chord.debugFixFingers);
 						}
 					}
 					break;
@@ -406,11 +395,11 @@ public class Actor extends UntypedAbstractActor {
 						fingerTable[numberBits, getSender()); 
 						predecessorAlive = 2;
 					*/} else {
-						if (allowedToPrint)
+						if (Chord.debugRingRepair| Chord.seeAllMessages)
 							System.out.println("not supposed to happen ["+ID.toInt()+"] notifyied by "+sender.toInt());
 					
 					}
-					printFingerTable("was notifyied by "+sender.toInt()+" predecessor is alive : "+predecessorAlive, false);
+					printFingerTable("was notifyied by "+sender.toInt()+", predecessor is alive : "+predecessorAlive+"/2", Chord.debugRingRepair);
 					break;
 					
 				case STABILIZE:
@@ -419,6 +408,7 @@ public class Actor extends UntypedAbstractActor {
 					CircleInt newSuccessor = new CircleInt(Chord.hashActorRef(m.actorRef));
 					successorAlive = 2;
 					if (getSelf() == m.actorRef) {
+						printFingerTable("successor is alive : "+successorAlive+"/2", Chord.debugRingRepair);
 						return;
 					}
 					if (newSuccessor.isBetween(ID, getFingerTableID(0))) {
@@ -437,11 +427,11 @@ public class Actor extends UntypedAbstractActor {
 							}
 						}
 					} else {
-						//if (allowedToPrint)
-							System.out.println("anomaly occurred ["+ID.toInt()+"] stabilized by "+newSuccessor.toInt());
+						if (Chord.debugRingRepair | Chord.seeAllMessages)
+							System.out.println("anomaly occurred, ["+ID.toInt()+"] stabilized by "+newSuccessor.toInt());
 						
 					}
-					printFingerTable("was notifyied , successor is "+getFingerTableID(0)+" was sent : "+Chord.hashActorRef(m.actorRef), false);
+					printFingerTable("was notifyied, successor is "+getFingerTableID(0)+" was sent : "+Chord.hashActorRef(m.actorRef), Chord.debugRingRepair);
 					break;
 
 				case NOTIFYSUCCESSOR:
@@ -453,15 +443,13 @@ public class Actor extends UntypedAbstractActor {
 					successorAlive -= 1;
 					if (predecessorAlive == 0) {
 						// predecessor is dead
-						//if (allowedToPrint)
-							System.out.println("["+ID.toInt()+"] predecessor is dead");
-						
+						System.out.println("["+ID.toInt()+"] predecessor is dead");
 						firstIndex = numberBits-1;
 						while (fingerTable[firstIndex] == fingerTable[numberBits]) {
 							firstIndex--;
 						}
 						if (firstIndex == -1) {
-							if (allowedToPrint)
+							if (Chord.debugRingRepair | Chord.seeAllMessages)
 								System.out.println("["+ID.toInt()+"] is now alone");
 							isAlone = true;
 							for (int i = 0; i < numberBits; i++) {
@@ -476,9 +464,7 @@ public class Actor extends UntypedAbstractActor {
 					}
 					if (successorAlive == 0) {
 						// successor is dead
-						//if (allowedToPrint)
-							System.out.println("["+ID.toInt()+"] successor is dead");
-						
+						System.out.println("["+ID.toInt()+"] successor is dead");
 						int i = 1;
 						while (fingerTable[i] == fingerTable[0]) {
 							i++;
@@ -487,7 +473,7 @@ public class Actor extends UntypedAbstractActor {
 							fingerTable[j] = fingerTable[i];
 						}
 					}
-					printFingerTable("checkAlive successor"+successorAlive+"predecessor"+predecessorAlive, false);
+					printFingerTable("checkAlive successor"+successorAlive+"/2 predecessor"+predecessorAlive+"/2", Chord.debugRingRepair);
 					break;
 
 
@@ -498,9 +484,9 @@ public class Actor extends UntypedAbstractActor {
 /////////////////////////////////////////////////////////////////////
 
 
-				case ALLOWPRINT:
+				/*case ALLOWPRINT:
 					allowPrint(m.ID == 1);
-					break;
+					break;*/
 
 				case PRINTVALUES:
 					for (int key : keys) {

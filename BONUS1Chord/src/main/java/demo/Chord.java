@@ -15,14 +15,13 @@ public class Chord {
 	public static final int numberBits = 5; // has to be under 16 because of the implementation of hashActorRef
 	private static final int numberActors = 30; // has to be under 2^numberBits
 
-	public static boolean debugFixFingers = false;
-	public static boolean debugRingRepair = false;
-	public static boolean debugData = false;
+	public static boolean debugFixFingers = false; // messages fixFingers, found
+	public static boolean debugRingRepair = false; // messages stabilize, notify, welcome, successorDie, predecessorDie
+	public static boolean debugData = true; // messages store, dump, get, add, remove
 	public static boolean seeAllMessages = false;
-	public static boolean allowedToPrintEverything = false;
 
 	public static enum indirectMessages {STORE, DUMP, GET, ADD, REMOVE, LOOKUP};
-	public static enum directMessages {GOT, SUCCESSORDIE, PREDECESSORDIE, WELCOME, NOTIFYSUCCESSOR, CHECKALIVE, FIXFINGERS, NOTIFY, FOUND, STABILIZE, ALLOWPRINT, PRINTVALUES, PRINTFINGERTABLE, BADFINGERTABLE, WHODIDNTJOIN, KILL};
+	public static enum directMessages {GOT, SUCCESSORDIE, PREDECESSORDIE, WELCOME, NOTIFYSUCCESSOR, CHECKALIVE, FIXFINGERS, NOTIFY, FOUND, STABILIZE, PRINTVALUES, PRINTFINGERTABLE, BADFINGERTABLE, WHODIDNTJOIN, KILL};
 
 	public static void main(String[] args) throws NoSuchAlgorithmException {
 
@@ -31,7 +30,7 @@ public class Chord {
 		ArrayList<Integer> IDs = new ArrayList<>();
 		ArrayList<ActorRef> actors = new ArrayList<>();
 		actors.add(system.actorOf(Actor.createActor(0), "0"));
-		System.out.print(0+" : ["+hashActorRef(actors.get(0))+"]\t" );
+		//System.out.print(0+" : ["+hashActorRef(actors.get(0))+"]\t" );
 		IDs.add(hashActorRef(actors.get(0)));
 
 		for (int i = 1 ; i < numberActors; i++) {
@@ -51,7 +50,7 @@ public class Chord {
 			IDs.add(newID);
 			actors.get(0).tell(new IndirectMessage(indirectMessages.ADD, newID, actors.get(i)), ActorRef.noSender());
 			
-			System.out.print(i+" : ["+hashActorRef(actors.get(i))+"]\t" );
+			//System.out.print(i+" : ["+hashActorRef(actors.get(i))+"]\t" );
 		} // the first actor could hash the ID himself but then the code for receiving the message from the outside would be different
 		// than the code for receiving the message from the inside
 
@@ -78,23 +77,10 @@ public class Chord {
 		}
 
 		//====================================
-		//	PRINTING NOTIFY & FIXFINGERS
-		//====================================
-		/*
-		for (ActorRef actor : actors) {
-			actor.tell(new DirectMessage(directMessages.ALLOWPRINT, 1), ActorRef.noSender());
-		}
-
-		wait(5000);
-		for (ActorRef actor : actors) {
-			actor.tell(new DirectMessage(directMessages.ALLOWPRINT, 1), ActorRef.noSender());
-		}
-		*/
-
-		//====================================
 		//		   DATA MANIPULATION
 		//====================================
-		/*
+		
+		System.out.println("\nDATA MANIPULATION TEST\n");
 		debugData = true;
 		// store somes values
 		Hashtable<Integer, String> values = new Hashtable<>();
@@ -146,12 +132,13 @@ public class Chord {
 		}
 		wait(2000);
 		debugData = false;
-		*/
+		
 
 		//====================================
 		//			NODE FAILURE
 		//====================================
-		/*
+		
+		System.out.println("\nNODE FAILURE TEST\n");
 		// print all the finger tables
 		System.out.println("\nPrinting all the finger tables");
 		for (ActorRef actor : actors) {
@@ -177,12 +164,13 @@ public class Chord {
 			actor.tell(new DirectMessage(directMessages.PRINTFINGERTABLE), ActorRef.noSender());
 		}
 		wait(1000);
-		*/
+		
 
 		//======================================
 		//		GRACEFUL DISCONNECTION
 		//======================================
-		/*
+		
+		System.out.println("\nDISCONNECTION TEST\n");
 		// storing somes values
 		System.out.println("\nStored some values");
 		for (int i = 0; i < (1<<numberBits); i++) {
@@ -212,11 +200,26 @@ public class Chord {
 			actor.tell(new DirectMessage(directMessages.PRINTFINGERTABLE), ActorRef.noSender());
 		}
 		wait(5000);
+		
+
+		//====================================
+		//	PRINTING NOTIFY & FIXFINGERS
+		//====================================
+		/*
+		for (ActorRef actor : actors) {
+			actor.tell(new DirectMessage(directMessages.ALLOWPRINT, 1), ActorRef.noSender());
+		}
+
+		wait(5000);
+		for (ActorRef actor : actors) {
+			actor.tell(new DirectMessage(directMessages.ALLOWPRINT, 1), ActorRef.noSender());
+		}
 		*/
 
 		//=======================
 		//		TERMINATION
 		//=======================
+		wait(8000);
 		system.terminate();
 	}
 
