@@ -14,7 +14,7 @@ public class Actor extends UntypedAbstractActor {
 	// Identifier (an int with a method isBetween)
 	private CircleInt ID;
 	// the finger table and then at index numberBits the predecessor
-	private ArrayList<ActorRef> fingerTable;
+	private ActorRef[] fingerTable;
 	// List of (key, value) stored in the node
 	private Hashtable<Integer, String> values = new Hashtable<>();
 	// List of keys stored in the node
@@ -33,18 +33,21 @@ public class Actor extends UntypedAbstractActor {
 	private boolean isFixingFingers = false;
 	private boolean recentlyFixedFingers = false;
 	private int numberFingersChecked = 0;
+	private Boolean[] fingerChecked = new Boolean[numberBits+1];
 	
 	// true : isn't communicating at all
 	private boolean isDead = false;
-	private boolean allowedToPrint = false;
+	// number of lost messages
+	private int numberMessagesLost = 0;
+	private boolean allowedToPrint = Chord.allowedToPrintEverything;
 
 	public Actor(int ID) {
 
 		this.ID = new CircleInt(Chord.hashActorRef(getSelf()));
 
-		this.fingerTable = new ArrayList<>();
+		fingerTable = new ActorRef[numberBits + 1];
 		for (int i = 0; i < numberBits + 1; i++) {
-			this.fingerTable.add(getSelf());
+			fingerTable[i] = getSelf();
 		}
 		
 		if (Chord.debugFixFingers | Chord.debugRingRepair | Chord.debugData | allowedToPrint) {
@@ -64,7 +67,7 @@ public class Actor extends UntypedAbstractActor {
 	}
 
 	public int getFingerTableID(int index){
-		return Chord.hashActorRef(fingerTable.get(index))%(1<<numberBits);
+		return Chord.hashActorRef(fingerTable[index])%(1<<numberBits);
 
 	}
 
@@ -85,7 +88,8 @@ public class Actor extends UntypedAbstractActor {
 		}
 		// i = 6
 		// passed to successor of ID + 64
-		//System.out.println("Node "+ID.toInt()+" efficiently sending to "+getFingerTableID(i)+" (distance "+distance+" and i "+i+")");
+		if (Chord.seeAllMessages)
+			System.out.println("Node "+ID.toInt()+" efficiently sending to "+getFingerTableID(i)+" (distance "+distance+" and i "+i+")");
 		return i;
 	}
 
@@ -94,7 +98,7 @@ public class Actor extends UntypedAbstractActor {
 		for (int i = 0; i < numberBits + 1; i++) {
 			fingerTableIDs[i] = getFingerTableID(i);
 		}
-		if (allowedToPrint | forcePrint | Chord.debugFixFingers | Chord.debugRingRepair | Chord.debugData) {
+		if (allowedToPrint | forcePrint  | Chord.debugRingRepair) {
 			System.out.println("Node "+ID.toInt()+" finger table : "+Arrays.toString(fingerTableIDs)+" "+s);
 		}
 	}
@@ -102,21 +106,20 @@ public class Actor extends UntypedAbstractActor {
 	// sends some values to newPredecessor and returns the oldPredecessor
 	public ActorRef greetNewPredecessor(CircleInt id, ActorRef newPredecessor) {
 		// update the finger table
-		ActorRef oldPredecessor = fingerTable.get(numberBits);
-		fingerTable.set(numberBits, newPredecessor);
+		ActorRef oldPredecessor = fingerTable[numberBits];
+		fingerTable[numberBits] = newPredecessor;
 		if (isAlone) {
 			// if this node was the first then its fingerTable is filled with the second node
 			gotIntoTheRing();
 			for (int i = 0; i < numberBits; i++) {
-				fingerTable.set(i, newPredecessor);
+				fingerTable[i] = newPredecessor;
 			}
-			setUpPeriodicalMessages();
 		}
 
 		//sending the appropriate values to the new predecessor
 		for (int key : keys) {
 			if (!isSuccessor(key)) {
-				fingerTable.get(numberBits).tell(new MyMessage(Chord.messages.STORE, key, values.get(key)), ActorRef.noSender());
+				fingerTable[numberBits].tell(new IndirectMessage(Chord.indirectMessages.STORE, key, values.get(key)), ActorRef.noSender());
 			}
 		}
 		return oldPredecessor;
@@ -124,20 +127,21 @@ public class Actor extends UntypedAbstractActor {
 
 	public void setUpPeriodicalMessages() {
 		// set up the periodical messages
-		getContext().system().scheduler().schedule(Duration.ofMillis(5000), Duration.ofMillis(5000), getSelf(), new MyMessage(Chord.messages.FIXFINGERS), getContext().system().dispatcher(), ActorRef.noSender());
-		getContext().system().scheduler().schedule(Duration.ofMillis(4000), Duration.ofMillis(2000), getSelf(), new MyMessage(Chord.messages.CHECKALIVE), getContext().system().dispatcher(), ActorRef.noSender());
-		getContext().system().scheduler().schedule(Duration.ofMillis(0), Duration.ofMillis(1000), getSelf(), new MyMessage(Chord.messages.NOTIFYNEIGHBOURS), getContext().system().dispatcher(), ActorRef.noSender());
+		getContext().system().scheduler().schedule(Duration.ofMillis(5000), Duration.ofMillis(1000), getSelf(), new SchedulerMessage(Chord.directMessages.FIXFINGERS), getContext().system().dispatcher(), ActorRef.noSender());
+		getContext().system().scheduler().schedule(Duration.ofMillis(4000), Duration.ofMillis(1000), getSelf(), new SchedulerMessage(Chord.directMessages.CHECKALIVE), getContext().system().dispatcher(), ActorRef.noSender());
+		getContext().system().scheduler().schedule(Duration.ofMillis(0), Duration.ofMillis(500), getSelf(), new SchedulerMessage(Chord.directMessages.NOTIFYSUCCESSOR), getContext().system().dispatcher(), ActorRef.noSender());
 	}
 
 	public void gotIntoTheRing() {
 		isAlone = false;
 		predecessorAlive = 2;
 		successorAlive = 2;
+		setUpPeriodicalMessages();
 	}
 
 	public void transmitAllValues() {
 		for (int key : keys) {
-			fingerTable.get(0).tell(new MyMessage(Chord.messages.STORE, key, values.get(key)), ActorRef.noSender());
+			fingerTable[0].tell(new IndirectMessage(Chord.indirectMessages.STORE, key, values.get(key)), ActorRef.noSender());
 		}
 	}
 
@@ -176,377 +180,315 @@ public class Actor extends UntypedAbstractActor {
 
 	@Override
 	public void onReceive(Object message) throws Throwable {
-		if (message instanceof MyMessage && !isDead) {
-			MyMessage m = (MyMessage) message;
-
-
-/////////////////////////////////////////////////////////////////////
-//																   //
-//					BASIC RING UPDATES MESSAGES		    		   //
-//																   //
-/////////////////////////////////////////////////////////////////////
-
-
-
-			//============================
-			//     ADDING A NEW NODE
-			//============================
-
-			switch (m.messageType) {
-
-				case ADD :
-					synchronized(this) {
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { 
-							// tell the new node your fingerTable and your ID
-							m.actorRef.tell(new MyMessage(Chord.messages.WELCOME, fingerTable), getSelf());
-							// update your finger table + send values to the new node
-							ActorRef oldPredecessor = greetNewPredecessor(destID, m.actorRef);
-							// tell the old predecessor that it has a new successor
-							if (predecessorAlive > 0)
-								oldPredecessor.tell(new MyMessage(Chord.messages.STABILIZE, fingerTable.get(numberBits)), ActorRef.noSender());
-							if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers) {
-								System.out.println("["+ID.toInt()+"] added a new node "+destID.toInt());
-							}
-							printFingerTable("add", false);
-						} else {
-							// send the message to the right node
-							fingerTable.get(appropriateFinger(destID)).tell(m, ActorRef.noSender());
-						} 
-					}
-					break;
-			
-
-
-
-
+		if (message instanceof IndirectMessage) {
+		//============================
+		//    TRANSITTING MESSAGES
+		//============================
+			IndirectMessage m = (IndirectMessage) message;
+			if (isDead) {
+				numberMessagesLost++;
+				if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers)
+					System.out.println("["+ID.toInt()+"] is dead, a message "+m.messageType+" was lost !! "+numberMessagesLost+" lost already");
+				return;
+			}
+			CircleInt destID = new CircleInt(m.ID);
+			if (isSuccessor(destID)) { 
+				// if you're the successor
+				switch (m.messageType) {
+				//============================
+				//    STORING A NEW VALUE
+				//============================
+					case STORE :
+						// store the key and value
+						values.put(m.ID, m.value);
+						keys.add(m.ID);
+						if (Chord.debugData)
+							System.out.println("["+ID.toInt()+"] stored a new value "+m.value+" for key "+m.ID);
+						break;
+				//============================
+				//      ERASING A VALUE
+				//============================
+					case DUMP :
+						// dump the key and value
+						values.remove(m.ID);
+						keys.removeIf(n -> (n == m.ID));
+						if (Chord.debugData)
+							System.out.println("["+ID.toInt()+"] erased value for key "+m.ID);
+						break;
+				//============================
+				//      GETTING A VALUE
+				//============================
+					case GET :
+						// return the value
+						getSender().tell(new DirectMessage(Chord.directMessages.GOT, m.ID, values.get(m.ID)), ActorRef.noSender());
+						break;
+				//============================
+				//     ADDING A NEW NODE
+				//============================
+					case ADD :	
+						// tell the new node your fingerTable and your ID
+						m.actorRef.tell(new DirectMessage(Chord.directMessages.WELCOME, fingerTable[numberBits]), getSelf());
+						// update your finger table + send values to the new node
+						ActorRef oldPredecessor = greetNewPredecessor(destID, m.actorRef);
+						// tell the old predecessor that it has a new successor
+						if (predecessorAlive > 0)
+							oldPredecessor.tell(new DirectMessage(Chord.directMessages.STABILIZE, fingerTable[numberBits]), ActorRef.noSender());
+						if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers) {
+							System.out.println("["+ID.toInt()+"] added a new node "+destID.toInt());
+						}
+						printFingerTable("add", false);
+						break;
 			//============================
 			//     REMOVING A NODE
 			//============================
-
-				case REMOVE :
-					synchronized(this) {
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { // if this node is to be removed (successor(nodeID) = nodeID)
-							// tell your successor your predecessor
-							if (predecessorAlive > 0) {
-								fingerTable.get(0).tell(new MyMessage(Chord.messages.SIGNAL, "fromDyingPredecessor", fingerTable.get(numberBits)), ActorRef.noSender());
-							}
-							// tell your predecessor your successor
-							if (predecessorAlive > 0) {
-								fingerTable.get(numberBits).tell(new MyMessage(Chord.messages.SIGNAL, "fromDyingSuccessor", fingerTable.get(0)), ActorRef.noSender());
-							}
-							// send your values
-							transmitAllValues();
-							// stop responding
-							kill();
-							printFingerTable("remove", false);
-						} else {
-							// send the message to the right node
-							fingerTable.get(appropriateFinger(destID)).tell(m, ActorRef.noSender());
+					case REMOVE :
+						// tell your successor your predecessor
+						if (predecessorAlive > 0) {
+							fingerTable[0].tell(new DirectMessage(Chord.directMessages.PREDECESSORDIE, fingerTable[numberBits]), ActorRef.noSender());
 						}
-					}
+						// tell your predecessor your successor
+						if (predecessorAlive > 0) {
+							fingerTable[numberBits].tell(new DirectMessage(Chord.directMessages.SUCCESSORDIE, fingerTable[0]), ActorRef.noSender());
+						}
+						// send your values
+						transmitAllValues();
+						// stop responding
+						kill();
+						printFingerTable("remove", false);
+						break;
+				//============================
+				// LOOKING FOR A FINGER NODE
+				//============================
+					case LOOKUP :
+						// return the node
+						getSender().tell(new DirectMessage(Chord.directMessages.FOUND, ID.toInt(), m.fingerNumber), getSelf());
+				}
+			} else {
+				// send the message to the right node
+				int index = appropriateFinger(destID);
+				fingerTable[index].tell(m, getSender());
+			} 
+		} else if (message instanceof DirectMessage) {
+		//============================
+		//    	DIRECT MESSAGES
+		//============================
+			DirectMessage m = (DirectMessage) message;
+			if (isDead) {
+				if (!(message instanceof SchedulerMessage)) {
+					numberMessagesLost++;
+					if (allowedToPrint | Chord.debugRingRepair | Chord.debugData | Chord.debugFixFingers)
+						System.out.println("["+ID.toInt()+"] is dead, a message "+m.messageType+" was lost !! "+numberMessagesLost+" lost already");			
+				}
+				return;
+			}
+			switch (m.messageType) {
+				//============================
+				//      GETTING A VALUE
+				//============================
+				case GOT :
+					if (Chord.debugData)
+						System.out.println("["+ID.toInt()+"] got value "+m.value+" for key "+m.ID);
 					break;
-				
-
-
-
-
-
 				//============================
 				//  PREPARING A NODE REMOVAL
 				//============================
-					
-				case SIGNAL :
-					synchronized(this) {
-						if (m.string2.equals("fromDyingSuccessor")) { 
-							// your successor will be removed
-							// replace all his occurences in the finger table
-							int i = 1;
-							while (fingerTable.get(i) == m.actorRef) {
-								i++;
-							}
-							for (int j = 0; j < i; j++) {
-								fingerTable.set(j, m.actorRef);
-							}
-							printFingerTable("signal fromDyingSuccessor", false);
-
-						} else if (m.string2.equals("fromDyingPredecessor")) {
-							// your predecessor will be removed
-							fingerTable.set(numberBits, m.actorRef);
-							printFingerTable("signal fromDyingPredecessor", false);
-						}
+				case PREDECESSORDIE :
+					int firstIndex = numberBits-1;
+					while (fingerTable[firstIndex] == fingerTable[numberBits]) {
+						firstIndex--;
 					}
+					for (int j = numberBits; j > firstIndex; j--) {
+						fingerTable[j] = m.actorRef;
+					}
+					printFingerTable("predecessor died", false);
 					break;
-			
 
-
-
-
+				case SUCCESSORDIE :
+					int lastIndex = 1;
+					while (fingerTable[lastIndex] == fingerTable[0]) {
+						lastIndex++;
+					}
+					for (int j = 0; j < lastIndex; j++) {
+						fingerTable[j] = m.actorRef;
+					}
+					printFingerTable("successor died", false);
+					break;
 
 				//============================
 				//  SETTING UP RING DUTIES
 				//============================
-
 				case WELCOME:
-					synchronized(this) {
-						gotIntoTheRing();
-						for (int i = 0; i < numberBits; i++) {
-							fingerTable.set(i, getSender());
-						}
-						fingerTable.set(numberBits, m.fingerTable.get(numberBits));
-						setUpPeriodicalMessages();
-						printFingerTable("welcome", false);
+					gotIntoTheRing(); // periodical messages, and isAlive bits
+					for (int i = 0; i < numberBits; i++) {
+						fingerTable[i] = getSender();
 					}
-
-
-
-
-
-
-				//============================
-				//    STORING A NEW VALUE
-				//============================
-
-				case STORE:
-
-					synchronized(this) {
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { 
-							// if this node is the successor of the key
-							// store the key and value
-							values.put(m.ID, m.value);
-							keys.add(m.ID);
-						} else {
-							// send the message to the right node
-							int index = appropriateFinger(destID);
-							fingerTable.get(index).tell(m, ActorRef.noSender());
-						} 
-					}
-
-
-
-
-
-
-				//============================
-				//      ERASING A VALUE
-				//============================
-
-				case DUMP :
-					synchronized(this) {
-						//log.info("["+ID.toInt()+"] received a message "+m.string);
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { 
-							// if this node is the successor of the key
-							// dump the key and value
-							values.remove(m.ID);
-							keys.remove(m.ID);
-						} else {
-							// send the message to the right node
-							int index = appropriateFinger(destID);
-							fingerTable.get(index).tell(m, ActorRef.noSender());
-						} 
-					}
-
-
-
-
-
-				//============================
-				//      GETTING A VALUE
-				//============================
-				
-				case GET :
-					synchronized(this) {
-						//log.info("["+ID.toInt()+"] received a message "+m.string);
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { 
-							// if this node is the successor of the key
-							// return the value
-							getSender().tell(values.get(m.ID), ActorRef.noSender());
-						
-						} else {
-							// send the message to the right node
-							int index = appropriateFinger(destID);
-							fingerTable.get(index).tell(m, getSender());
-						}
-						printFingerTable("get", false);
-					}
-
-
-
-
-
-
-				//============================
-				// LOOKING FOR A FINGER NODE
-				//============================
-
-				case LOOKUP :
-					synchronized(this) {
-						CircleInt destID = new CircleInt(m.ID);
-						if (isSuccessor(destID)) { 
-							// if this node is the successor of the key
-							// return the node
-							getSender().tell(new MyMessage(Chord.messages.FOUND, m.fingerNumber, fingerTable.get(0)), ActorRef.noSender());
-						} else {
-							// send the message to the right node
-							int index = appropriateFinger(destID);
-							fingerTable.get(index).tell(m, getSender());
-						}
-					}
-
-
-
+					fingerTable[numberBits] = m.actorRef;
+					printFingerTable("welcome", false);
+					break;
 
 				//============================
 				//  FIXING THE FINGER TABLE
 				//============================
-				
 				case FIXFINGERS :
-
-					synchronized(this) {
-						if (!isFixingFingers& !recentlyFixedFingers) {
-							isFixingFingers = true;
-							numberFingersChecked = 0;
-							for (int i = 0; i < numberBits; i++) {
-								int fingerID = ID.toInt() + (1<<i);
-								fingerTable.get(0).tell(new MyMessage(Chord.messages.LOOKUP, i, fingerID), getSelf());
+					if (!recentlyFixedFingers) {
+						if (isFixingFingers) {
+							for (int i = numberBits-1; i > -1; i--) {
+								if (!fingerChecked[i]) {
+									fingerTable[i] = fingerTable[0];
+									if (Chord.debugFixFingers)
+										System.out.println("["+ID.toInt()+"] lost finger "+i+" probably due to some node fail");
+							
+								}
 							}
-							//printFingerTable("fix_fingers", false);
+							isFixingFingers = false;
 							recentlyFixedFingers = true;
-						} else if (recentlyFixedFingers) {
-							recentlyFixedFingers = false;
+							problematicFingerTable = false;
+							if (Chord.debugFixFingers)
+								System.out.println("["+ID.toInt()+"] is done fixing fingers");
+							return;
 						}
+						isFixingFingers = true;
+						numberFingersChecked = 0;
+						for (int i = 0; i < numberBits; i++) {
+							fingerChecked[i] = false;
+						}
+						for (int i = 0; i < numberBits; i++) {
+							int fingerID = ID.toInt() + (1<<i);
+							fingerTable[0].tell(new IndirectMessage(Chord.indirectMessages.LOOKUP, fingerID, i), getSelf());
+						}
+						if (Chord.debugFixFingers)
+							System.out.println("["+ID.toInt()+"] has started fixing fingers");
+					} else if (recentlyFixedFingers) {
+						recentlyFixedFingers = false;
 					}
-
-
-
-
+					break;
 
 				//============================
 				// ACKNOLEDGING A FINGER-FIX
 				//============================
-
 				case FOUND :
-
 					synchronized(this) {
-						fingerTable.set(m.fingerNumber, getSender());
+						fingerTable[m.fingerNumber] = getSender();
 						numberFingersChecked++;
-						if (allowedToPrint)
-							System.out.println("["+ID.toInt()+"] finger "+m.fingerNumber+" is "+Chord.hashActorRef(getSender())+" ("+numberFingersChecked+")");
+						fingerChecked[m.fingerNumber] = true;
+						if (allowedToPrint | Chord.debugFixFingers)
+							System.out.println("["+ID.toInt()+"] finger "+m.fingerNumber+" is "+m.ID+" ("+numberFingersChecked+")");
 						if (numberFingersChecked == numberBits) {
 							isFixingFingers = false;
+							recentlyFixedFingers = true;
 							problematicFingerTable = false;
-							printFingerTable("fix_fingers", false);
+							if (Chord.debugFixFingers)
+								System.out.println("["+ID.toInt()+"] is done fixing fingers");
 						}
 					}
-
-
-
-
+					break;
 
 				//============================
 				// NOTIFYIED BY A PREDECESSOR
 				//============================
 
 				case NOTIFY:
-
-					synchronized(this) {
-						CircleInt sender = new CircleInt(Chord.hashActorRef(getSender()));
-						getSender().tell(new MyMessage(Chord.messages.STABILIZE, fingerTable.get(numberBits)), ActorRef.noSender());
-						
-						// message from predecessor
-						if (fingerTable.get(numberBits) == getSender()) {
-							predecessorAlive = 2;
-						
-						} else if (fingerTable.get(numberBits) == null) {
-							fingerTable.set(numberBits, getSender());
-							predecessorAlive = 2;
-						
-						/*} else if (sender.isBetween(getFingerTableID(numberBits), ID)) {
-							// make sure the old predecessor is updated : THIS NEVER HAPPENS
-							System.out.println("so it happens");
-							fingerTable.get(numberBits).tell(new MyMessage("stabilize", getSender()), getSelf());
-							fingerTable.set(numberBits, getSender()); 
-							predecessorAlive = 2;
-						*/} else {
-							if (allowedToPrint)
-								System.out.println("not supposed to happen ["+ID.toInt()+"] notifyied by "+sender.toInt());
-						
-						}
-						printFingerTable("was notifyied by "+sender.toInt()+" predecessor is "+predecessorAlive, false);
+					CircleInt sender = new CircleInt(Chord.hashActorRef(getSender()));
+					getSender().tell(new DirectMessage(Chord.directMessages.STABILIZE, fingerTable[numberBits]), ActorRef.noSender());
+					
+					// message from predecessor
+					if (fingerTable[numberBits] == getSender()) {
+						predecessorAlive = 2;
+					
+					} else if (fingerTable[numberBits] == null) {
+						fingerTable[numberBits] = getSender();
+						predecessorAlive = 2;
+					
+					/*} else if (sender.isBetween(getFingerTableID(numberBits), ID)) {
+						// make sure the old predecessor is updated : THIS NEVER HAPPENS
+						System.out.println("so it happens");
+						fingerTable[numberBits).tell(new MyMessage("stabilize", getSender()), getSelf());
+						fingerTable[numberBits, getSender()); 
+						predecessorAlive = 2;
+					*/} else {
+						if (allowedToPrint)
+							System.out.println("not supposed to happen ["+ID.toInt()+"] notifyied by "+sender.toInt());
+					
 					}
+					printFingerTable("was notifyied by "+sender.toInt()+" predecessor is alive : "+predecessorAlive, false);
+					break;
 					
 				case STABILIZE:
-
-					synchronized(this) {
-						// message from successor
-						CircleInt newSuccessor = new CircleInt(Chord.hashActorRef(m.actorRef));
-						successorAlive = 2;
-						if (getSelf() == m.actorRef) {
-							return;
-						}
-						if (newSuccessor.isBetween(ID, getFingerTableID(0))) {
-							// a node has been added it's your successor
-							// update your finger table
-							int index = appropriateFinger(newSuccessor);
-							//fingerTable.set(1, fingerTable.get(0));
-							for (int i = 0; i <= index; i++) {
-								fingerTable.set(i, m.actorRef);
-							}
-							for (int i = index + 1; i < numberBits; i++) {
-								if (newSuccessor.isBetween(ID, getFingerTableID(i))) {
-									fingerTable.set(i, m.actorRef);
-								} else {
-									break;
-								}
-							}
-						} else {
-							//if (allowedToPrint)
-								System.out.println("not supposed to happen ["+ID.toInt()+"] stabilized by "+newSuccessor.toInt());
-							
-						}
-						printFingerTable("was notifyied , successor is "+getFingerTableID(0), false);
+					if (m.actorRef == null)
+						return;
+					CircleInt newSuccessor = new CircleInt(Chord.hashActorRef(m.actorRef));
+					successorAlive = 2;
+					if (getSelf() == m.actorRef) {
+						return;
 					}
-
-				case NOTIFYNEIGHBOURS:
-
-					synchronized(this) {
-						fingerTable.get(0).tell(new MyMessage(Chord.messages.NOTIFY), getSelf());
-						/*if (fingerTable.get(numberBits) != null) {
-							fingerTable.get(numberBits).tell(new MyMessage("notify", 0, ID.toInt()), getSelf());
-						}*/
+					if (newSuccessor.isBetween(ID, getFingerTableID(0))) {
+						// a node has been added it's your successor
+						// update your finger table
+						int index = appropriateFinger(newSuccessor);
+						//fingerTable[1, fingerTable[0));
+						for (int i = 0; i <= index; i++) {
+							fingerTable[i] = m.actorRef;
+						}
+						for (int i = index + 1; i < numberBits; i++) {
+							if (newSuccessor.isBetween(ID, getFingerTableID(i))) {
+								fingerTable[i] = m.actorRef;
+							} else {
+								break;
+							}
+						}
+					} else {
+						//if (allowedToPrint)
+							System.out.println("anomaly occurred ["+ID.toInt()+"] stabilized by "+newSuccessor.toInt());
+						
 					}
+					printFingerTable("was notifyied , successor is "+getFingerTableID(0)+" was sent : "+Chord.hashActorRef(m.actorRef), false);
+					break;
+
+				case NOTIFYSUCCESSOR:
+					fingerTable[0].tell(new DirectMessage(Chord.directMessages.NOTIFY), getSelf());
+					break;
 			
 				case CHECKALIVE:
-
-					synchronized(this) {
-						predecessorAlive -= 1;
-						successorAlive -= 1;
-						if (predecessorAlive == 0) {
-							// predecessor is dead
-							//if (allowedToPrint)
-								System.out.println("["+ID.toInt()+"] predecessor is dead");
-							
-							fingerTable.set(numberBits, null);
+					predecessorAlive -= 1;
+					successorAlive -= 1;
+					if (predecessorAlive == 0) {
+						// predecessor is dead
+						//if (allowedToPrint)
+							System.out.println("["+ID.toInt()+"] predecessor is dead");
+						
+						firstIndex = numberBits-1;
+						while (fingerTable[firstIndex] == fingerTable[numberBits]) {
+							firstIndex--;
 						}
-						if (successorAlive == 0) {
-							// successor is dead
-							//if (allowedToPrint)
-								System.out.println("["+ID.toInt()+"] successor is dead");
-							
-							int i = 1;
-							while (fingerTable.get(i) == fingerTable.get(0)) {
-								i++;
+						if (firstIndex == -1) {
+							if (allowedToPrint)
+								System.out.println("["+ID.toInt()+"] is now alone");
+							isAlone = true;
+							for (int i = 0; i < numberBits; i++) {
+								fingerTable[i] = getSelf();
 							}
-							for (int j = 0; j < i; j++) {
-								fingerTable.set(j, fingerTable.get(i));
+						} else {
+							for (int j = firstIndex + 1; j < numberBits; j++) {
+								fingerTable[j] = fingerTable[firstIndex];
 							}
+							fingerTable[numberBits] = null;
 						}
-						printFingerTable("checkAlive successor"+successorAlive+"predecessor"+predecessorAlive, false);
 					}
+					if (successorAlive == 0) {
+						// successor is dead
+						//if (allowedToPrint)
+							System.out.println("["+ID.toInt()+"] successor is dead");
+						
+						int i = 1;
+						while (fingerTable[i] == fingerTable[0]) {
+							i++;
+						}
+						for (int j = 0; j < i; j++) {
+							fingerTable[j] = fingerTable[i];
+						}
+					}
+					printFingerTable("checkAlive successor"+successorAlive+"predecessor"+predecessorAlive, false);
+					break;
 
 
 /////////////////////////////////////////////////////////////////////
@@ -557,49 +499,37 @@ public class Actor extends UntypedAbstractActor {
 
 
 				case ALLOWPRINT:
-
-					synchronized(this) {
-						allowPrint(m.ID == 1);
-					}
+					allowPrint(m.ID == 1);
+					break;
 
 				case PRINTVALUES:
-
-					synchronized(this) {
-						for (int key : keys) {
-							System.out.println("["+ID.toInt()+"] : "+key+" "+values.get(key));
-						}
+					for (int key : keys) {
+						System.out.println("["+ID.toInt()+"] : "+key+" "+values.get(key));
 					}
+					break;
 
 				case PRINTFINGERTABLE:
-
-					synchronized(this) {
-						if (!problematicFingerTable) {
-							printFingerTable(null, true);
-						}
+					if (!problematicFingerTable) {
+						printFingerTable("was fixed recently : "+(recentlyFixedFingers&(!isFixingFingers)), true);
 					}
+					break;
 				
 				case BADFINGERTABLE:
-
-					synchronized(this) {
-						if (problematicFingerTable) {
-							printFingerTable(null, true);
-						}
+					if (problematicFingerTable) {
+						printFingerTable("wasn't fixed yet", true);
 					}
+					break;
 
 				case WHODIDNTJOIN :
-
-					synchronized(this) {
-						if (isAlone) {
-							printFingerTable(null, true);
-						}
+					if (isAlone) {
+						printFingerTable("hasn't joined the ring", true);
 					}
+					break;
 
 				case KILL :
-
-					synchronized(this) {
-						kill();
-					}
-				}
+					kill();
+					break;
+			}
 		}
 	}
 }
