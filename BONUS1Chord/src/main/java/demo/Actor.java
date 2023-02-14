@@ -24,6 +24,7 @@ public class Actor extends UntypedAbstractActor {
 	// when the predecessor doesn't ping two times in a row, the predecessor is dead
 	private int predecessorAlive = 0;
 	private int successorAlive = 0;
+	private int maxUnreachable = 1;
 
 	// 1 : doesn't know anyone
 	private boolean isAlone = true;
@@ -122,15 +123,15 @@ public class Actor extends UntypedAbstractActor {
 
 	public void setUpPeriodicalMessages() {
 		// set up the periodical messages
-		getContext().system().scheduler().schedule(Duration.ofMillis(5000), Duration.ofMillis(1000), getSelf(), new SchedulerMessage(Chord.directMessages.FIXFINGERS), getContext().system().dispatcher(), ActorRef.noSender());
+		getContext().system().scheduler().schedule(Duration.ofMillis(5000), Duration.ofMillis(2000), getSelf(), new SchedulerMessage(Chord.directMessages.FIXFINGERS), getContext().system().dispatcher(), ActorRef.noSender());
 		getContext().system().scheduler().schedule(Duration.ofMillis(4000), Duration.ofMillis(1000), getSelf(), new SchedulerMessage(Chord.directMessages.CHECKALIVE), getContext().system().dispatcher(), ActorRef.noSender());
 		getContext().system().scheduler().schedule(Duration.ofMillis(0), Duration.ofMillis(500), getSelf(), new SchedulerMessage(Chord.directMessages.NOTIFYSUCCESSOR), getContext().system().dispatcher(), ActorRef.noSender());
 	}
 
 	public void gotIntoTheRing() {
 		isAlone = false;
-		predecessorAlive = 2;
-		successorAlive = 2;
+		predecessorAlive = maxUnreachable;
+		successorAlive = maxUnreachable;
 		setUpPeriodicalMessages();
 	}
 
@@ -334,7 +335,7 @@ public class Actor extends UntypedAbstractActor {
 							isFixingFingers = false;
 							recentlyFixedFingers = true;
 							problematicFingerTable = false;
-							printFingerTable(" fixed finger table", Chord.debugFixFingers);
+							printFingerTable("fixed finger table", Chord.debugFixFingers);
 							return;
 						}
 						isFixingFingers = true;
@@ -346,8 +347,7 @@ public class Actor extends UntypedAbstractActor {
 							int fingerID = ID.toInt() + (1<<i);
 							fingerTable[0].tell(new IndirectMessage(Chord.indirectMessages.LOOKUP, fingerID, i), getSelf());
 						}
-						if (Chord.debugFixFingers| Chord.seeAllMessages)
-							System.out.println("["+ID.toInt()+"] has started fixing fingers");
+						printFingerTable("["+ID.toInt()+"] has started fixing fingers", Chord.debugFixFingers| Chord.seeAllMessages);
 					} else if (recentlyFixedFingers) {
 						recentlyFixedFingers = false;
 					}
@@ -382,33 +382,33 @@ public class Actor extends UntypedAbstractActor {
 					
 					// message from predecessor
 					if (fingerTable[numberBits] == getSender()) {
-						predecessorAlive = 2;
+						predecessorAlive = maxUnreachable;
 					
 					} else if (fingerTable[numberBits] == null) {
 						fingerTable[numberBits] = getSender();
-						predecessorAlive = 2;
+						predecessorAlive = maxUnreachable;
 					
 					/*} else if (sender.isBetween(getFingerTableID(numberBits), ID)) {
 						// make sure the old predecessor is updated : THIS NEVER HAPPENS
 						System.out.println("so it happens");
 						fingerTable[numberBits).tell(new MyMessage("stabilize", getSender()), getSelf());
 						fingerTable[numberBits, getSender()); 
-						predecessorAlive = 2;
+						predecessorAlive = maxUnreachable;
 					*/} else {
 						if (Chord.debugRingRepair| Chord.seeAllMessages)
 							System.out.println("not supposed to happen ["+ID.toInt()+"] notifyied by "+sender.toInt());
 					
 					}
-					printFingerTable("was notifyied by "+sender.toInt()+", predecessor is alive : "+predecessorAlive+"/2", Chord.debugRingRepair);
+					printFingerTable("was notifyied by "+sender.toInt()+", predecessor is alive : "+predecessorAlive+"/"+maxUnreachable, Chord.debugRingRepair);
 					break;
 					
 				case STABILIZE:
 					if (m.actorRef == null)
 						return;
 					CircleInt newSuccessor = new CircleInt(Chord.hashActorRef(m.actorRef));
-					successorAlive = 2;
+					successorAlive = maxUnreachable;
 					if (getSelf() == m.actorRef) {
-						printFingerTable("successor is alive : "+successorAlive+"/2", Chord.debugRingRepair);
+						printFingerTable("successor is alive : "+successorAlive+"/"+maxUnreachable, Chord.debugRingRepair);
 						return;
 					}
 					if (newSuccessor.isBetween(ID, getFingerTableID(0))) {
@@ -439,8 +439,6 @@ public class Actor extends UntypedAbstractActor {
 					break;
 			
 				case CHECKALIVE:
-					predecessorAlive -= 1;
-					successorAlive -= 1;
 					if (predecessorAlive == 0) {
 						// predecessor is dead
 						System.out.println("["+ID.toInt()+"] predecessor is dead");
@@ -466,14 +464,25 @@ public class Actor extends UntypedAbstractActor {
 						// successor is dead
 						System.out.println("["+ID.toInt()+"] successor is dead");
 						int i = 1;
-						while (fingerTable[i] == fingerTable[0]) {
+						while ((fingerTable[i] == fingerTable[0]) && (fingerTable[i] != getSelf())) {
 							i++;
 						}
+						if (i == numberBits+1) {
+							if (Chord.debugRingRepair | Chord.seeAllMessages)
+								System.out.println("["+ID.toInt()+"] is now alone");
+							isAlone = true;
+							for (int j = 0; j < numberBits; j++) {
+								fingerTable[j] = getSelf();
+							}
+						}
+						// the new successor is the closest successor of the finger table
 						for (int j = 0; j < i; j++) {
 							fingerTable[j] = fingerTable[i];
 						}
 					}
-					printFingerTable("checkAlive successor"+successorAlive+"/2 predecessor"+predecessorAlive+"/2", Chord.debugRingRepair);
+					printFingerTable("checkAlive successor"+successorAlive+"/"+maxUnreachable+"predecessor"+predecessorAlive+"/"+maxUnreachable, Chord.debugRingRepair);
+					predecessorAlive -= 1;
+					successorAlive -= 1;
 					break;
 
 

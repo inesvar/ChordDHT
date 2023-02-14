@@ -31,6 +31,10 @@ There are two types of messages :
 
 Since nodes can fail and consequently messages can be lost, **it would be necessary to send essential messages** (new data to be stored in the hash table, or some important control messages like `welcome`) **in a way that it is stored to be eventually send again**. It isn't implemented in the code, but it causes data loss.
 
+Also important : in the original paper, it was suggested to use a list of successor to be able to find your new successor very quickly if it died : it's not implemented here. I retrieve the clasest successor from the finger table instead.
+
+It's an issue only when there's a really small set of actors, I notice I didn't prevent a node to have itself in its own finger table which causes problems...
+
 ## Data messages
 
 These messages are used to **move values in the network**.

@@ -13,11 +13,12 @@ import akka.actor.ActorSystem;
 public class Chord {
 
 	public static final int numberBits = 5; // has to be under 16 because of the implementation of hashActorRef
-	private static final int numberActors = 30; // has to be under 2^numberBits
+	private static final int numberActors = 15; // it works well with 20 actors... (and under 20)
+	// but not with 30 actors ! the timings should probably be changed to make it work with 30 actors
 
 	public static boolean debugFixFingers = false; // messages fixFingers, found
 	public static boolean debugRingRepair = false; // messages stabilize, notify, welcome, successorDie, predecessorDie
-	public static boolean debugData = true; // messages store, dump, get, add, remove
+	public static boolean debugData = false; // messages store, dump, get, add, remove
 	public static boolean seeAllMessages = false;
 
 	public static enum indirectMessages {STORE, DUMP, GET, ADD, REMOVE, LOOKUP};
