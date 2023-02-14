@@ -13,8 +13,11 @@ import akka.actor.ActorSystem;
 public class Chord {
 
 	public static final int numberBits = 5; // has to be under 16 because of the implementation of hashActorRef
-	private static final int numberActors = 15; // it works well with 20 actors... (and under 20)
-	// but not with 30 actors ! the timings should probably be changed to make it work with 30 actors
+	// 5 is adapted for the test code below to be lisible
+
+	private static final int numberActors = 20; // the node failure recovery works well for up to 20 actors
+	// around 30 actors, the predecessor of the dead actor struggles to find a close successor
+
 
 	public static boolean debugFixFingers = false; // messages fixFingers, found
 	public static boolean debugRingRepair = false; // messages stabilize, notify, welcome, successorDie, predecessorDie

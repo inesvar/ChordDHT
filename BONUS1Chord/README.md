@@ -9,6 +9,13 @@ Just compile and execute with
 
 It's a small demo of what the code can do with some data manipulation, a node failure and a node disconnection.
 
+The node failure is repaired quite well, but only because there are restrictions in this code that wouldn't be present in a real-time system, namely :
+- the **periodic messages** all have the same period and thus there's a **form of synchronization between all the nodes**
+
+When the number of actors get high, the node failure is repaired very slowly because the predecessor of the failed node struggles to find a "good" successor (with 30 actors and numberBits = 5 for instance).
+
+The **code could be easily improved** in resistance to node failure if actors not only had finger tables, but also a **list of successors**, as it's described in the original paper on the Chord algorithm.
+
 
 ## Using **Consistent Hashing**
 

@@ -499,7 +499,7 @@ public class Actor extends UntypedAbstractActor {
 
 				case PRINTVALUES:
 					for (int key : keys) {
-						System.out.println("["+ID.toInt()+"] : "+key+" "+values.get(key));
+						System.out.println("["+ID.toInt()+"] : key "+key+" value "+values.get(key));
 					}
 					break;
 
